@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stillwater Meditation Reader</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%230b1519%22/%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%228%22 fill=%22none%22 stroke=%22%23e9c98f%22 stroke-width=%222%22/%3E%3C/svg%3E">
+<script src="coi-serviceworker.js"></script>
+<style>
+:root{
+  /* Layout: a night-water stage holds the spoken sentence and the player; the script and voice controls sit beside it. One dark world, no theme switch. */
+  --deep:#0b1519;
+  --pool:#11222a;
+  --line:#23404a;
+  --mist:#cfdcda;
+  --dim:#86a1a2;
+  --moon:#e9c98f;
+  --moon-soft:rgba(233,201,143,.38);
+  --display:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--deep);color:var(--mist);font-family:var(--body);font-size:16px;line-height:1.5}
+body{min-height:100%}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 48px;display:grid;gap:22px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px}
+.brand{font-family:var(--display);font-size:2.1rem;line-height:1;letter-spacing:.01em;color:var(--mist);display:flex;align-items:center;gap:12px}
+.mark{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--moon);box-shadow:0 0 0 5px rgba(233,201,143,.08),0 0 0 11px rgba(233,201,143,.04)}
+.tag{margin:0;color:var(--dim);max-width:52ch}
+
+.grid{display:grid;gap:20px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);grid-template-areas:"stage script" "stage voice" "privacy privacy"}
+.stage{grid-area:stage}
+.script{grid-area:script}
+.voice{grid-area:voice}
+.privacy{grid-area:privacy}
+@media (max-width:880px){
+  .grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "script" "voice" "privacy"}
+}
+
+/* Stage */
+.stage{position:relative;border-radius:22px;overflow:hidden;background:#091216;border:1px solid var(--line);min-height:560px;display:flex;flex-direction:column}
+#water{position:absolute;inset:0;width:100%;height:100%;display:block}
+.stage-inner{position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:28px 32px 12px}
+.status{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(11,21,25,.7);font-size:.85rem;color:var(--mist);font-variant-numeric:tabular-nums}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.chip[data-state="buffering"]::before{background:transparent;border:1.5px dashed var(--moon)}
+.chip[data-state="speaking"]::before{background:var(--moon);box-shadow:0 0 10px var(--moon)}
+.chip[data-state="resting"]::before{background:transparent;border:1.5px solid var(--moon)}
+.chip[data-state="done"]::before{background:var(--moon-soft)}
+.count{font-size:.85rem;color:var(--dim);font-variant-numeric:tabular-nums}
+.now{margin:0;font-family:var(--display);font-style:italic;font-size:clamp(1.7rem,3.3vw,2.55rem);line-height:1.18;color:#f1ead9;max-width:26ch;text-wrap:balance;transition:opacity .6s ease, transform .6s ease;text-shadow:0 2px 24px rgba(0,0,0,.6)}
+.now.fade{opacity:0;transform:translateY(6px)}
+.upnext{margin:0;color:var(--dim);font-size:.95rem;max-width:52ch;min-height:1.5em;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+
+.player{position:relative;padding:16px 24px 22px;background:linear-gradient(to top,rgba(9,18,22,.95),rgba(9,18,22,.75));border-top:1px solid rgba(35,64,74,.7);display:grid;gap:14px}
+.segments{display:flex;gap:3px;min-height:16px}
+.seg{flex:1 1 0;min-width:2px;height:16px;padding:0;margin:0;border:0;background:none;cursor:pointer;position:relative;border-radius:3px}
+.seg::after{content:"";position:absolute;left:0;right:0;top:5px;height:6px;border-radius:3px;background:var(--line);transition:background .3s}
+.seg.ready::after{background:#3b6573}
+.seg.done::after{background:var(--moon-soft)}
+.seg.current::after{background:var(--moon)}
+.seg:hover::after{background:#3a6270}
+.seg.current:hover::after{background:var(--moon)}
+.controls{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.clock{font-variant-numeric:tabular-nums;color:var(--dim);font-size:.9rem}
+.buttons{display:flex;align-items:center;gap:10px}
+.ctl{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(17,34,42,.8);color:var(--mist);display:grid;place-items:center;cursor:pointer;transition:border-color .2s, background .2s}
+.ctl:hover{border-color:var(--dim)}
+.ctl svg{width:18px;height:18px;fill:currentColor}
+.ctl.play{width:64px;height:64px;background:var(--moon);border-color:var(--moon);color:#13202a}
+.ctl.play:hover{background:#f3d8a6}
+.ctl.play svg{width:24px;height:24px}
+.ctl:disabled{opacity:.4;cursor:not-allowed}
+.play .i-pause{display:none}
+.play.is-playing .i-play{display:none}
+.play.is-playing .i-pause{display:block}
+.amb{display:flex;align-items:center;gap:8px;font-size:.9rem;color:var(--dim);cursor:pointer}
+.side{justify-self:end;display:grid;gap:8px;justify-items:end}
+.stepper{display:flex;align-items:center;gap:6px;font-size:.9rem;color:var(--mist);font-variant-numeric:tabular-nums}
+.stepper .lbl{color:var(--dim)}
+.stepper button{width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:rgba(17,34,42,.8);color:var(--mist);font:inherit;line-height:1;cursor:pointer}
+.stepper button:hover{border-color:var(--dim)}
+.stepper output{min-width:3.2ch;text-align:center}
+.player{grid-template-columns:minmax(0,1fr)}
+@media (max-width:540px){
+  .controls{grid-template-columns:1fr 1fr;grid-template-areas:"btns btns" "clock amb"}
+  .buttons{grid-area:btns;justify-self:center}
+  .clock{grid-area:clock}
+  .side{grid-area:amb;justify-items:end}
+  .stage-inner{padding:22px 20px 10px}
+  .player{padding:14px 16px 18px}
+  .stage{min-height:0}
+}
+
+/* Panels */
+.panel{background:var(--pool);border:1px solid var(--line);border-radius:18px;padding:20px 22px;display:grid;gap:12px;align-content:start}
+.panel h2,.panel-head label{font-family:var(--display);font-weight:400;font-size:1.5rem;line-height:1.1;margin:0;color:var(--mist)}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tools{display:flex;gap:14px}
+.link{background:none;border:0;padding:2px 0;color:var(--moon);font:inherit;font-size:.9rem;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--moon-soft)}
+.link:hover{text-decoration-color:var(--moon)}
+textarea{width:100%;min-height:250px;resize:vertical;background:#0c191e;color:var(--mist);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:inherit;line-height:1.6}
+textarea::placeholder{color:#5f7b7d}
+.stats{margin:0;font-size:.88rem;color:var(--dim);font-variant-numeric:tabular-nums}
+
+.field{display:grid;gap:6px}
+.field > label,.row-label{font-size:.9rem;color:var(--mist);display:flex;justify-content:space-between;gap:8px}
+.field output{color:var(--dim);font-variant-numeric:tabular-nums}
+.hint{color:var(--dim);font-weight:400}
+select{width:100%;background:#0c191e;color:var(--mist);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit}
+input[type="range"]{width:100%;accent-color:var(--moon)}
+input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
+.check{display:flex;align-items:center;gap:10px;font-size:.92rem;cursor:pointer}
+.note{margin:0;font-size:.85rem;color:var(--dim);line-height:1.45}
+.note.warn{color:#e7b98a}
+.tipbox{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#0f1d23}
+.tipbox strong{color:var(--mist)}
+.tipbox[hidden]{display:none}
+.sliders{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px}
+@media (max-width:460px){.sliders{grid-template-columns:1fr}}
+.voice-row{display:flex;gap:10px;align-items:center}
+.voice-row select{flex:1}
+.btn{background:transparent;color:var(--mist);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font:inherit;font-size:.9rem;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--dim)}
+
+.privacy ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px 24px}
+.privacy li{padding-left:16px;border-left:2px solid var(--line);color:var(--dim);font-size:.92rem}
+.privacy li strong{display:block;color:var(--mist);font-weight:700;margin-bottom:2px}
+.msg{margin:0;padding:10px 14px;border-radius:10px;border:1px solid #6b4b33;background:#21170f;color:#f0cfa8;font-size:.9rem}
+.msg[hidden]{display:none}
+.credits{color:var(--dim);font-size:.8rem;text-align:center;padding:4px 16px}
+.msg a{color:var(--moon);font-weight:700;text-underline-offset:3px}
+.app-note{font-size:.95rem}
+.tip{margin:0;font-size:.88rem;color:var(--dim);max-width:52ch;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+.tip[hidden]{display:none}
+
+:focus-visible{outline:2px solid var(--moon);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){
+  .now{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Stillwater</div>
+    <p class="tag">Paste a meditation and hear it read slowly, with a quiet pause after every sentence.</p>
+  </header>
+  <p id="appNote" class="msg app-note" hidden>Inside the Claude app, only the Studio voices can play. To use your computer’s own voices, <a href="./" data-self target="_blank" rel="noopener">open Stillwater in your web browser</a>.</p>
+
+  <main class="grid">
+    <section class="stage" aria-label="Player">
+      <canvas id="water" aria-hidden="true"></canvas>
+      <div class="stage-inner">
+        <div class="status">
+          <span id="chip" class="chip" data-state="idle">Ready</span>
+          <span id="count" class="count"></span>
+        </div>
+        <p id="now" class="now" aria-live="polite"></p>
+        <p id="upnext" class="upnext"></p>
+        <p id="msg" class="msg" role="status" hidden></p>
+        <p id="phoneTip" class="tip" hidden>On iPhone, turn off Silent mode and turn the volume up, or the voice stays quiet. Keep the screen on while listening.</p>
+        <p id="noSpeech" class="msg" role="alert" hidden>Your browser accepted the text but isn’t producing any sound. Pick a Studio voice instead, or, inside the Claude app, <a href="./" data-self target="_blank" rel="noopener">Open Stillwater in Safari, Chrome or Edge</a> and press play there.</p>
+      </div>
+      <div class="player">
+        <div id="segments" class="segments" role="group" aria-label="Jump to a sentence"></div>
+        <div class="controls">
+          <span id="clock" class="clock">0:00</span>
+          <div class="buttons">
+            <button id="restart" class="ctl" type="button" aria-label="Start over" title="Start over">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.93 8h2.02A5 5 0 1 0 12 7v3L7.5 6 12 2v3z"/></svg>
+            </button>
+            <button id="prev" class="ctl" type="button" aria-label="Previous sentence" title="Previous sentence">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM19 5v14L9 12z"/></svg>
+            </button>
+            <button id="play" class="ctl play" type="button" aria-label="Play" title="Play (space)">
+              <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+              <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+            </button>
+            <button id="next" class="ctl" type="button" aria-label="Next sentence" title="Next sentence">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5v14l10-7z"/></svg>
+            </button>
+          </div>
+          <div class="side">
+            <div class="stepper" role="group" aria-label="Pause after each sentence">
+              <span class="lbl">Pause</span>
+              <button id="pauseLess" type="button" aria-label="Shorter pause">−</button>
+              <output id="pauseQuick" aria-live="polite">5 s</output>
+              <button id="pauseMore" type="button" aria-label="Longer pause">+</button>
+            </div>
+            <label class="amb" for="ambient"><input type="checkbox" id="ambient" checked> Ambient tone</label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel script" aria-label="Your meditation">
+      <div class="panel-head">
+        <label for="text">Your meditation</label>
+        <div class="tools">
+          <button id="example" class="link" type="button">Use example</button>
+          <button id="clear" class="link" type="button">Clear</button>
+        </div>
+      </div>
+      <textarea id="text" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="sentences" placeholder="Paste or type your meditation here. Each sentence is read, then followed by a pause."></textarea>
+      <p id="stats" class="stats"></p>
+    </section>
+
+    <section class="panel voice" aria-label="Voice settings">
+      <h2>Voice</h2>
+      <div class="field">
+        <label for="voice">Narrator</label>
+        <div class="voice-row">
+          <select id="voice"></select>
+          <button id="preview" class="btn" type="button">Preview</button>
+        </div>
+      </div>
+      <label class="check" for="privateOnly"><input type="checkbox" id="privateOnly" checked> Only device voices that stay on this device</label>
+      <p id="voiceNote" class="note"></p>
+      <p id="voiceTip" class="note tipbox" hidden><strong>For instant playback on your phone,</strong> install a high-quality voice. iPhone: Settings › Accessibility › Spoken Content › Voices › English, choose a male voice and download its Enhanced or Premium version. Android: Settings › Accessibility › Text-to-speech output, then install voice data for your engine. Reload this page and pick it under Device voices. These voices run on your phone and start instantly; Studio voices sound richer but take time to prepare on a phone.</p>
+      <div class="sliders">
+        <div class="field">
+          <label for="rate">Pace <output id="rateOut" for="rate"></output></label>
+          <input id="rate" type="range" min="0.5" max="1.1" step="0.02" value="0.78">
+        </div>
+        <div class="field">
+          <label for="pitch">Pitch <span class="hint">lower is deeper</span> <output id="pitchOut" for="pitch"></output></label>
+          <input id="pitch" type="range" min="0.5" max="1.2" step="0.05" value="0.8">
+        </div>
+        <div class="field">
+          <label for="pause">Pause after each sentence <output id="pauseOut" for="pause"></output></label>
+          <input id="pause" type="range" min="0" max="30" step="1" value="5">
+        </div>
+        <div class="field">
+          <label for="volume">Voice volume <output id="volumeOut" for="volume"></output></label>
+          <input id="volume" type="range" min="0.2" max="1" step="0.05" value="1">
+        </div>
+        <div class="field">
+          <label for="ambLevel">Ambient level <output id="ambLevelOut" for="ambLevel"></output></label>
+          <input id="ambLevel" type="range" min="0" max="1" step="0.05" value="0.45">
+        </div>
+      </div>
+    </section>
+
+    <section class="panel privacy" aria-label="Privacy">
+      <h2>Private by design</h2>
+      <ul>
+        <li><strong>Nothing is saved</strong>Your text lives only in this open tab. The page has no account, no server and no storage. Refresh or close it and the meditation is gone. Only the voice model itself is kept in your browser’s cache.</li>
+        <li><strong>Nothing is sent</strong>The page makes no network requests with your words. The studio voice engine can only load this page’s own files and refuses requests to any other site.</li>
+        <li><strong>Voices run on your device</strong>Studio voices are an AI model running inside this tab. Device voices marked online send text to Google or Microsoft, so they stay hidden unless you untick the box above.</li>
+        <li><strong>Spellcheck is off</strong>The text box turns off browser spellcheck, which on some setups sends what you type to a cloud service.</li>
+      </ul>
+    </section>
+  </main>
+  <footer class="credits">Studio voices: Kokoro-82M by hexgrad (Apache-2.0), run with kokoro-js 1.2.1 and ONNX Runtime Web from Transformers.js 3.5.1. All files are hosted with this page, and nothing is loaded from anywhere else.</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    text:$("text"), stats:$("stats"), now:$("now"), upnext:$("upnext"), chip:$("chip"), count:$("count"),
+    segments:$("segments"), clock:$("clock"), play:$("play"), prev:$("prev"), next:$("next"), restart:$("restart"),
+    voice:$("voice"), preview:$("preview"), privateOnly:$("privateOnly"), voiceNote:$("voiceNote"),
+    rate:$("rate"), pitch:$("pitch"), pause:$("pause"), volume:$("volume"), ambLevel:$("ambLevel"), ambient:$("ambient"),
+    example:$("example"), clear:$("clear"), msg:$("msg"), canvas:$("water"), noSpeech:$("noSpeech"), appNote:$("appNote")
+  };
+
+  const EXAMPLE = "Find a comfortable position, and let your eyes gently close. Take a slow breath in through your nose, and let it go through your mouth.\n\nNotice the weight of your body, held completely by whatever is beneath you. There is nowhere you need to be, and nothing you need to do. Let your shoulders soften, as if they are sinking into warm sand.\n\nBring your attention to your breath, and simply watch it come and go. If a thought arrives, greet it kindly, and let it drift away like a leaf on a slow river. Feel the stillness that has always been here, quietly waiting beneath the noise. With each breath out, let yourself settle a little deeper.\n\nRest here for a moment, in this calm and open space. When you are ready, wiggle your fingers and toes, and slowly open your eyes.";
+
+  const synth = window.speechSynthesis;
+  const supported = !!synth && typeof window.SpeechSynthesisUtterance === "function";
+
+  let sentences = [];
+  let idx = 0;
+  let state = "idle";           // idle | speaking | resting | paused | done
+  let pausedFrom = "speaking";
+  let token = 0;
+  let restTimer = null, restEnds = 0, restTotal = 1, restRemaining = 0;
+  let liveUtterance = null;     // keep a reference so the browser does not drop it
+  let voices = [];
+  let elapsedMs = 0, playStart = 0;
+  let wakeLock = null;
+
+  /* ---------- Text ---------- */
+  function splitSentences(text){
+    const out = [];
+    const blocks = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const seg = (typeof Intl !== "undefined" && Intl.Segmenter) ? new Intl.Segmenter("en", {granularity:"sentence"}) : null;
+    for (const b of blocks){
+      if (seg){
+        for (const s of seg.segment(b)){ const t = s.segment.trim(); if (t) out.push(t); }
+      } else {
+        (b.match(/[^.!?…]+(?:[.!?…]+["'”’)]*|$)/g) || []).forEach(t => { t = t.trim(); if (t) out.push(t); });
+      }
+    }
+    return out;
+  }
+  // Long sentences are spoken in chunks (some browsers stop speaking after ~15 seconds of one utterance).
+  function chunk(s){
+    if (s.length <= 200) return [s];
+    const parts = s.split(/(?<=[,;:—–])\s+/);
+    const chunks = []; let cur = "";
+    for (const p of parts){
+      const joined = (cur + " " + p).trim();
+      if (joined.length > 200 && cur){ chunks.push(cur); cur = p; } else { cur = joined; }
+    }
+    if (cur) chunks.push(cur);
+    return chunks.flatMap(c => c.length <= 260 ? [c] : (c.match(/.{1,200}(\s|$)/g) || [c]).map(x => x.trim()).filter(Boolean));
+  }
+  function parse(){
+    sentences = splitSentences(els.text.value).map(t => ({ text:t, chunks:chunk(t), words:t.split(/\s+/).length }));
+    idx = Math.min(idx, Math.max(0, sentences.length - 1));
+    renderSegments();
+    updateStats();
+    updateStage(true);
+    schedulePrep();
+  }
+
+  /* ---------- Time ---------- */
+  function estSeconds(){
+    const rate = +els.rate.value, pause = +els.pause.value;
+    let s = 0;
+    sentences.forEach((x, i) => { s += x.words / (2.6 * rate) + 0.4; if (i < sentences.length - 1) s += pause; });
+    return s;
+  }
+  function fmt(sec){
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + ":" + String(s).padStart(2, "0");
+  }
+  function isPlaying(s){ return s === "speaking" || s === "resting"; }
+  function elapsed(){ return elapsedMs + (isPlaying(state) ? performance.now() - playStart : 0); }
+
+  function updateStats(){
+    const n = sentences.length;
+    if (!n){ els.stats.textContent = els.stats.dataset.base = "No sentences yet."; return; }
+    const words = sentences.reduce((a, s) => a + s.words, 0);
+    const min = Math.max(1, Math.round(estSeconds() / 60));
+    els.stats.textContent = els.stats.dataset.base = `${n} sentence${n === 1 ? "" : "s"} · ${words} words · about ${min} min with pauses`;
+    if (typeof markReady === "function") markReady();
+  }
+
+  /* ---------- State ---------- */
+  function setState(s){
+    const was = isPlaying(state), will = isPlaying(s);
+    const wasActive = was || state === "buffering", active = will || s === "buffering";
+    if (!was && will) playStart = performance.now();
+    if (was && !will) elapsedMs += performance.now() - playStart;
+    if (!wasActive && active) requestWake();
+    if (wasActive && !active) releaseWake();
+    state = s;
+    els.play.classList.toggle("is-playing", active);
+    els.play.setAttribute("aria-label", active ? "Pause" : "Play");
+    els.play.title = active ? "Pause (space)" : "Play (space)";
+    ambientTo(active);
+    updateChip();
+  }
+  function updateChip(){
+    els.chip.dataset.state = state;
+    let label = "Ready";
+    if (state === "buffering"){
+      label = loadPct !== null ? "Loading voice · " + loadPct + "%"
+        : !worker || !studioReady ? "Starting the voice…"
+        : "Preparing · " + readyCount() + " of " + sentences.length + " ready · starts in ~" + fmt(Math.max(1, bufferEta));
+    }
+    else if (state === "speaking") label = preparing ? (loadPct !== null ? "Loading voice · " + loadPct + "%" : "Preparing voice…") : "Speaking";
+    else if (state === "resting") label = "Resting · " + Math.max(1, Math.ceil((restEnds - performance.now()) / 1000)) + "s";
+    else if (state === "paused") label = "Paused";
+    else if (state === "done") label = "Finished";
+    if (els.chip.textContent !== label) els.chip.textContent = label;
+  }
+  function updateClock(){
+    const total = sentences.length ? " / ~" + fmt(estSeconds()) : "";
+    els.clock.textContent = fmt(elapsed() / 1000) + total;
+  }
+  let lastNow = null;
+  function setNow(text, instant){
+    if (text === lastNow) return;
+    lastNow = text;
+    if (instant || matchMedia("(prefers-reduced-motion: reduce)").matches){ els.now.textContent = text; els.now.classList.remove("fade"); return; }
+    els.now.classList.add("fade");
+    setTimeout(() => { els.now.textContent = lastNow; els.now.classList.remove("fade"); }, 380);
+  }
+  function updateStage(instant){
+    const n = sentences.length;
+    const ok = n > 0 && (supported || studioSupported);
+    [els.play, els.prev, els.next, els.restart].forEach(b => b.disabled = !ok);
+    if (!n){
+      setNow("Paste a meditation to begin.", instant);
+      els.upnext.textContent = ""; els.count.textContent = "";
+    } else {
+      setNow(sentences[idx].text, instant);
+      els.upnext.textContent = state === "buffering"
+        ? "Preparing the voice on this device first, so every pause is exactly " + els.pause.value + " seconds. It starts on its own."
+        : sentences[idx + 1] ? "Next: " + sentences[idx + 1].text : "Last sentence";
+      els.count.textContent = `Sentence ${idx + 1} of ${n}`;
+    }
+    [...els.segments.children].forEach((b, i) => {
+      b.classList.toggle("done", i < idx || (state === "done" && i <= idx));
+      b.classList.toggle("current", i === idx && state !== "done");
+    });
+    updateClock(); updateChip();
+  }
+  function renderSegments(){
+    els.segments.innerHTML = "";
+    sentences.forEach((s, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "seg";
+      b.setAttribute("aria-label", `Go to sentence ${i + 1}`);
+      b.title = s.text.length > 80 ? s.text.slice(0, 80) + "…" : s.text;
+      b.addEventListener("click", () => jump(i));
+      els.segments.append(b);
+    });
+    markReady();
+  }
+  function showMsg(t){ els.msg.textContent = t; els.msg.hidden = !t; }
+
+  /* ---------- Voices ---------- */
+  const MALE = /\b(male|daniel|alex|aaron|arthur|evan|nathan|tom|oliver|gordon|lee|fred|guy|christopher|davis|andrew|brian|eric|roger|steffan|george|james|david|mark|richard|ryan|thomas|william|liam|jacob|matthew|rishi|paul|sean|connor|mitchell|ralph)\b/i;
+  const FEMALE = /\b(female|samantha|victoria|karen|moira|tessa|zira|hazel|susan|aria|jenny|ava|allison|serena|fiona|kate|catherine|libby|sonia|natasha|emma|michelle|monica|paulina|amelie|anna|alice|ellen|joana|kyoko|yuna|zosia|sara|nora|melina|milena|veena|lekha|ioana|laura|mariska|yelda|carmit|zoe|nicky|siri female|google us english)\b/i;
+  const NOVELTY = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|rocko|grandpa|grandma|shelley|sandy|flo|eddy|reed|junior|ralph|fred)\b/i;
+  const PREFERRED = /\b(daniel|arthur|evan|aaron|nathan|guy|christopher|davis|andrew|brian|roger|george|ryan|thomas|oliver|tom)\b/i;
+  function score(v){
+    let s = 0; const n = v.name;
+    if (/^en/i.test(v.lang)) s += 20;
+    if (MALE.test(n)) s += 30;
+    if (FEMALE.test(n)) s -= 40;
+    if (NOVELTY.test(n)) s -= 60;
+    if (PREFERRED.test(n)) s += 6;
+    if (/premium/i.test(n)) s += 16;
+    else if (/enhanced|natural|neural/i.test(n)) s += 12;
+    if (v.localService) s += 3;
+    return s;
+  }
+  const keyOf = (v) => v.name + "\u0001" + v.lang;
+  function loadVoices(){
+    if (!supported) return;
+    const all = synth.getVoices();
+    const privateOnly = els.privateOnly.checked;
+    voices = all.filter(v => !privateOnly || v.localService).sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+    const prev = els.voice.value;
+    els.voice.innerHTML = "";
+    const studio = document.createElement("optgroup"); studio.label = "Studio voices · AI on this device";
+    if (studioSupported){
+      STUDIO.forEach(([id, label]) => { const o = document.createElement("option"); o.value = "kokoro:" + id; o.textContent = label; studio.append(o); });
+      els.voice.append(studio);
+    }
+    const suggested = document.createElement("optgroup"); suggested.label = "Device voices: calm male";
+    const others = document.createElement("optgroup"); others.label = "Other device voices";
+    voices.forEach(v => {
+      const o = document.createElement("option");
+      o.value = keyOf(v);
+      o.textContent = `${v.name.replace(/^Microsoft\s+/, "")} (${v.lang})${v.localService ? "" : " · online"}`;
+      (score(v) >= 45 ? suggested : others).append(o);
+    });
+    if (suggested.children.length) els.voice.append(suggested);
+    if (others.children.length) els.voice.append(others);
+    if (prev && [...els.voice.options].some(o => o.value === prev)) els.voice.value = prev;
+    else {
+      const quality = voices.find(v => /^en/i.test(v.lang) && /enhanced|premium/i.test(v.name) && score(v) >= 45);
+      if (phoneLike && quality) els.voice.value = keyOf(quality);
+      else if (studioSupported) els.voice.value = "kokoro:" + STUDIO[0][0];
+    }
+    $("voiceTip").hidden = !(phoneLike && !voices.some(v => /^en/i.test(v.lang) && /enhanced|premium/i.test(v.name) && score(v) >= 45));
+    updateVoiceNote(all.length);
+  }
+  let lastTotal = 0;
+  function updateVoiceNote(totalCount){
+    if (typeof totalCount === "number") lastTotal = totalCount; else totalCount = lastTotal;
+    const n = els.voiceNote;
+    n.classList.remove("warn");
+    if (isStudio()){
+      if (studioError){ n.textContent = "The studio voice couldn’t start in this browser (" + studioError + "). Pick a device voice below the studio voices instead."; n.classList.add("warn"); }
+      else if (loadPct !== null) n.textContent = "Downloading the studio voice from this page: " + loadPct + "%. This happens once per browser.";
+      else if (studioReady) n.textContent = "Studio voice ready. It runs on this device, so your text never leaves it.";
+      else n.textContent = "Studio voices run a small AI voice model inside this page. The first play downloads it from this page (about 115 MB) and your browser usually keeps it for next time. Your text never leaves this device.";
+      return;
+    }
+    if (!supported){ n.textContent = "This browser can’t speak text aloud. Try a current version of Chrome, Edge, Safari or Firefox."; n.classList.add("warn"); return; }
+    if (!els.privateOnly.checked){
+      n.textContent = "Voices marked “online” send each sentence to your browser maker’s speech service. This page still saves nothing.";
+      n.classList.add("warn"); return;
+    }
+    if (!voices.length){
+      n.textContent = totalCount ? "No on-device voices found in this browser. You can untick the box to use online voices, or install a voice on your computer and reload." : "Loading voices…";
+      if (totalCount) n.classList.add("warn");
+      return;
+    }
+    n.textContent = "For a deeper, richer narrator, add an Enhanced or Premium English male voice. Mac: System Settings › Accessibility › Spoken Content › System voice › Manage Voices. Windows: Settings › Time & language › Speech › Add voices. Then reload this page.";
+  }
+  function currentVoice(){ return voices.find(v => keyOf(v) === els.voice.value) || null; }
+  function makeUtterance(text){
+    const u = new SpeechSynthesisUtterance(text);
+    const v = currentVoice();
+    if (v){ u.voice = v; u.lang = v.lang; }
+    u.rate = +els.rate.value; u.pitch = +els.pitch.value; u.volume = +els.volume.value;
+    return u;
+  }
+
+  /* ---------- Studio voices (Kokoro, runs in a worker on this device) ---------- */
+  const STUDIO = [
+    ["am_michael", "Michael · warm, American"],
+    ["am_onyx", "Onyx · deep, American"],
+    ["am_fenrir", "Fenrir · resonant, American"],
+    ["bm_george", "George · calm, British"],
+    ["bm_lewis", "Lewis · low, British"],
+    ["bm_daniel", "Daniel · soft, British"],
+    ["bm_fable", "Fable · storyteller, British"],
+    ["am_adam", "Adam · plain, American"],
+  ];
+  const studioSupported = typeof Worker === "function" && typeof WebAssembly === "object";
+  let worker = null, studioReady = false, studioError = "", loadPct = null, reqId = 0, preparing = false;
+  const pending = new Map(), kCache = new Map();
+  let currentSrc = null, previewSrc = null, voiceGain = null;
+  function isStudio(){ return els.voice.value.startsWith("kokoro:"); }
+  function getWorker(){
+    if (worker) return worker;
+    studioError = "";
+    worker = new Worker("./tts-worker.js", { type: "module" });
+    worker.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.type === "progress"){ loadPct = Math.min(99, Math.round(m.loaded / m.total * 100)); updateChip(); updateVoiceNote(); }
+      else if (m.type === "ready"){ studioReady = true; loadPct = null; updateChip(); updateVoiceNote(); }
+      else if (m.type === "audio"){
+        const sec = m.audio.length / m.rate;
+        if (m.ms && sec > 0.8){ const r = (m.ms / 1000) / sec; genRatio = genMeasured ? genRatio * 0.6 + r * 0.4 : r; genMeasured = true; }
+        const p = pending.get(m.id); if (p){ pending.delete(m.id); p.resolve({ data: m.audio, rate: m.rate }); }
+      }
+      else if (m.type === "error"){
+        if (m.id === null) studioFailed(m.message);
+        else { const p = pending.get(m.id); if (p){ pending.delete(m.id); p.reject(new Error(m.message)); } }
+      }
+    };
+    worker.onerror = (e) => { e.preventDefault && e.preventDefault(); studioFailed(e.message || "the voice engine didn’t start"); };
+    worker.postMessage({ type: "load" });
+    return worker;
+  }
+  function studioFailed(msg){
+    studioError = msg; studioReady = false; loadPct = null;
+    pending.forEach(p => p.reject(new Error(msg))); pending.clear(); kCache.clear();
+    try { worker && worker.terminate(); } catch(e){}
+    worker = null;
+    updateVoiceNote(); updateChip();
+  }
+  function studioParams(){
+    return { voice: els.voice.value.slice(7), speed: Math.max(0.6, Math.min(1.2, +els.rate.value * 1.1)) };
+  }
+  function depthRate(){ return Math.min(1, 0.7 + 0.3 * +els.pitch.value); }
+  function kRequest(s){
+    if (!s) return null;
+    const { voice, speed } = studioParams();
+    const key = voice + "|" + speed.toFixed(2) + "|" + s.text;
+    if (kCache.has(key)) return kCache.get(key);
+    const id = ++reqId;
+    const p = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    p.id = id;
+    getWorker().postMessage({ type: "gen", id, chunks: s.chunks, voice, speed });
+    p.catch(() => kCache.delete(key));
+    p.then((res) => { p.done = true; p.dur = res.data.length / res.rate; markReady(); }, () => {});
+    kCache.set(key, p);
+    if (kCache.size > 60) kCache.delete(kCache.keys().next().value);
+    return p;
+  }
+  function makeSource(res){
+    const buf = actx.createBuffer(1, res.data.length, res.rate);
+    buf.copyToChannel(res.data, 0);
+    const src = actx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = depthRate();
+    voiceGain.gain.value = +els.volume.value;
+    src.connect(voiceGain);
+    return src;
+  }
+  function stopSource(){
+    [currentSrc, previewSrc].forEach(src => { if (src){ try { src.onended = null; src.stop(); } catch(e){} } });
+    currentSrc = null; previewSrc = null;
+  }
+  function studioSentence(i, my){
+    const ahead = kRequest(sentences[i]);
+    if (!ahead.done && genMeasured && waitNeeded(i) > 0.5){ startStudio(i); return; }
+    preparing = true; updateChip();
+    const now = ahead;
+    if (worker && !now.done) worker.postMessage({ type: "front", id: now.id });
+    queueAhead(i + 1);
+    now.then(res => {
+      if (my !== token) return;
+      preparing = false;
+      if (!actx || !voiceGain) throw new Error("this browser can’t play generated audio");
+      const src = makeSource(res);
+      src.onended = () => { if (my !== token || src !== currentSrc) return; currentSrc = null; afterSentence(my); };
+      currentSrc = src;
+      src.start();
+      updateChip();
+    }).catch(err => {
+      if (my !== token) return;
+      preparing = false;
+      if (useDeviceVoiceInstead(err)) speakSentence(i);
+      else { halt(); setState("paused"); }
+    });
+  }
+  function keyFor(s){ const { voice, speed } = studioParams(); return voice + "|" + speed.toFixed(2) + "|" + s.text; }
+  // Tint the sentences whose audio is already prepared.
+  function markReady(){
+    const studio = isStudio();
+    [...els.segments.children].forEach((b, i) => {
+      const p = studio && sentences[i] && kCache.get(keyFor(sentences[i]));
+      b.classList.toggle("ready", !!(p && p.done));
+    });
+    const base = els.stats.dataset.base || "";
+    if (studio && worker && sentences.length){
+      const n = sentences.filter(x => { const p = kCache.get(keyFor(x)); return p && p.done; }).length;
+      els.stats.textContent = base + " · voice ready for " + n + " of " + sentences.length;
+    } else if (base) els.stats.textContent = base;
+  }
+  // While you read or edit, quietly prepare the whole meditation so Play starts right away.
+  let prepTimer = null;
+  function schedulePrep(force){
+    clearTimeout(prepTimer);
+    if (!isStudio() || studioError || (!worker && !force)) return;
+    prepTimer = setTimeout(() => { if (!isPlaying(state) && sentences.length) queueAhead(idx); }, 900);
+  }
+  function autoStart(){
+    if (!studioSupported || !isStudio() || worker) return;
+    const UAx = navigator.userAgent;
+    const phone = /iPhone|iPad|iPod|Android/.test(UAx) || (/Macintosh/.test(UAx) && navigator.maxTouchPoints > 1);
+    const go = () => { if (!worker && isStudio()){ getWorker(); schedulePrep(true); } };
+    if (!phone){ go(); return; }
+    // On phones, start early only if the voice is already stored in this browser.
+    try {
+      caches.open("transformers-cache")
+        .then(c => c.match("https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx"))
+        .then(hit => { if (hit) go(); }).catch(() => {});
+    } catch(e){}
+  }
+
+  // How long this device takes to make one second of speech (learned as it goes).
+  const phoneLike = /iPhone|iPad|iPod|Android/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  let genRatio = phoneLike ? 4 : 1.6, genMeasured = false;
+  let bufferTimer = null, bufferEta = 0;
+  function rawSeconds(s){ const p = kCache.get(keyFor(s)); return p && p.done ? p.dur : s.words / (2.6 * studioParams().speed) + 0.4; }
+  // Seconds to wait before starting at sentence `from` so playback never has to stop and wait.
+  function waitNeeded(from){
+    let gen = 0, offset = 0, wait = 0;
+    const pause = +els.pause.value, slow = depthRate();
+    for (let k = from; k < sentences.length; k++){
+      const s = sentences[k], p = kCache.get(keyFor(s)), raw = rawSeconds(s);
+      if (!(p && p.done)) gen += genRatio * raw;
+      wait = Math.max(wait, gen - offset);
+      offset += raw / slow + pause;
+    }
+    return wait;
+  }
+  function readyCount(){ return sentences.filter(x => { const p = kCache.get(keyFor(x)); return p && p.done; }).length; }
+  function startStudio(i){
+    idx = i;
+    const first = kRequest(sentences[i]);
+    if (worker && !first.done) worker.postMessage({ type: "front", id: first.id });
+    queueAhead(i + 1);
+    if (waitNeeded(i) <= 0.5){ speakSentence(i); return; }
+    setState("buffering");
+    updateStage(true);
+    clearInterval(bufferTimer);
+    const check = () => {
+      if (state !== "buffering"){ clearInterval(bufferTimer); return; }
+      bufferEta = waitNeeded(idx);
+      updateChip();
+      if (bufferEta <= 0.5){ clearInterval(bufferTimer); speakSentence(idx); }
+    };
+    bufferTimer = setInterval(check, 500);
+    check();
+  }
+
+  // Line up the rest of the meditation so it's ready before each pause ends.
+  function queueAhead(from){
+    const keep = [];
+    for (let j = from; j < sentences.length; j++){ const p = kRequest(sentences[j]); if (p && !p.done) keep.push(p.id); }
+    const nowP = sentences[from - 1] && kRequest(sentences[from - 1]);
+    if (nowP && !nowP.done) keep.push(nowP.id);
+    if (worker) worker.postMessage({ type: "drop", keep });
+  }
+  function useDeviceVoiceInstead(err){
+    const opt = [...els.voice.options].find(o => !o.value.startsWith("kokoro:"));
+    if (!opt){ showMsg("The studio voice couldn’t play (" + err.message + ")."); return false; }
+    els.voice.value = opt.value;
+    updateVoiceNote();
+    showMsg("The studio voice couldn’t play here (" + err.message + "), so Stillwater switched to a device voice.");
+    return true;
+  }
+
+  /* ---------- Playback ---------- */
+  let watchdog = null, retriedDefault = false, silentRetries = 0;
+  const badVoices = new Set();
+  // Pick the next suggested voice that hasn't failed; null means the device's own default voice.
+  function swapVoice(failed){
+    if (!failed){ return undefined; }
+    badVoices.add(keyOf(failed));
+    const next = voices.find(v => !badVoices.has(keyOf(v)) && score(v) >= 45);
+    if (next){ els.voice.value = keyOf(next); }
+    showMsg(`“${failed.name}” isn’t installed on this device, so Stillwater switched to ${next ? "“" + next.name + "”" : "your device’s default voice"}.`);
+    return next || null;
+  }
+  function speakSentence(i){
+    clearTimeout(restTimer);
+    clearTimeout(watchdog);
+    const my = ++token;
+    const busy = synth.speaking || synth.pending;
+    if (busy) synth.cancel();
+    idx = i;
+    stopSource();
+    setState("speaking");
+    updateStage();
+    showMsg("");
+    if (isStudio()){ ensureAudio(); studioSentence(i, my); return; }
+    const s = sentences[i];
+    let c = 0;
+    const step = (useDefault) => {
+      if (my !== token) return;
+      if (c >= s.chunks.length){ afterSentence(my); return; }
+      const text = s.chunks[c++];
+      const u = makeUtterance(text);
+      if (useDefault === true){ u.voice = null; }
+      let started = false;
+      const sentAt = performance.now();
+      const expectedMs = text.split(/\s+/).length / (2.6 * u.rate) * 1000;
+      u.onstart = () => { started = true; clearTimeout(watchdog); els.noSpeech.hidden = true; };
+      u.onend = () => {
+        if (u !== liveUtterance) return;
+        clearTimeout(watchdog);
+        // A voice that is listed but not installed "finishes" instantly without making a sound.
+        if (my === token && expectedMs > 1500 && performance.now() - sentAt < expectedMs * 0.2 && silentRetries < 3){
+          silentRetries++;
+          const swapped = swapVoice(u.voice);
+          c--;
+          if (swapped !== undefined){ setTimeout(() => step(swapped === null), 120); return; }
+        }
+        step();
+      };
+      u.onerror = (e) => {
+        if (u !== liveUtterance) return;
+        clearTimeout(watchdog);
+        if (my !== token) return;
+        if (e.error === "interrupted" || e.error === "canceled") return;
+        showMsg("The voice stopped unexpectedly (" + e.error + "). Try another narrator, or press play again.");
+        step();
+      };
+      liveUtterance = u;
+      try { synth.resume(); } catch(e){}
+      synth.speak(u);
+      // If the browser accepts the text but never starts talking, say so instead of sitting silent.
+      watchdog = setTimeout(() => {
+        if (started || my !== token) return;
+        if (!retriedDefault){
+          retriedDefault = true;
+          synth.cancel();
+          c--;
+          setTimeout(() => step(true), 120);
+          return;
+        }
+        halt();
+        pausedFrom = "speaking";
+        setState("paused");
+        noSpeech();
+      }, 4000);
+    };
+    // Speak right away when nothing is queued, so the first sentence stays inside the tap (needed on iPhone and iPad).
+    if (busy) setTimeout(step, 80); else step();
+  }
+  function noSpeech(){
+    showMsg("");
+    els.noSpeech.hidden = false;
+  }
+  function afterSentence(my){
+    if (idx >= sentences.length - 1){ finish(); return; }
+    rest(+els.pause.value * 1000, my);
+  }
+  function rest(ms, my){
+    restTotal = Math.max(1, +els.pause.value * 1000);
+    restEnds = performance.now() + ms;
+    setState("resting");
+    restTimer = setTimeout(() => { if (my === token) speakSentence(idx + 1); }, ms);
+  }
+  function finish(){
+    token++;
+    setState("done");
+    chime();
+    updateStage();
+  }
+  function halt(){
+    token++;
+    clearInterval(bufferTimer);
+    clearTimeout(restTimer);
+    clearTimeout(watchdog);
+    preparing = false;
+    stopSource();
+    if (supported) synth.cancel();
+  }
+  function pausePlayback(){
+    if (!isPlaying(state)) return;
+    pausedFrom = state;
+    if (state === "resting") restRemaining = Math.max(0, restEnds - performance.now());
+    halt();
+    setState("paused");
+  }
+  function resume(){
+    if (pausedFrom === "resting"){ const my = ++token; rest(restRemaining, my); }
+    else speakSentence(idx);
+  }
+  function toggle(){
+    if (!sentences.length || (!supported && !isStudio())) return;
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(e){}
+    ensureAudio();
+    if (state === "buffering"){ halt(); setState("idle"); updateStage(); return; }
+    if (isPlaying(state)) pausePlayback();
+    else if (state === "paused" && !(isStudio() && pausedFrom === "speaking")) resume();
+    else {
+      silentRetries = 0;
+      if (state === "done"){ idx = 0; elapsedMs = 0; }
+      if (isStudio()) startStudio(idx); else speakSentence(idx);
+    }
+  }
+  function jump(i){
+    if (!sentences.length) return;
+    i = Math.max(0, Math.min(sentences.length - 1, i));
+    const playing = isPlaying(state), buffering = state === "buffering";
+    halt();
+    idx = i;
+    if (buffering){ startStudio(i); return; }
+    if (playing){ if (isStudio()) startStudio(i); else speakSentence(i); return; }
+    pausedFrom = "speaking";
+    if (state === "done") setState("idle");
+    updateStage();
+  }
+  function stopAll(){
+    halt();
+    setState("idle");
+    elapsedMs = 0;
+  }
+
+  /* ---------- Ambient sound (generated locally) ---------- */
+  let actx = null, ambGain = null;
+  function ensureAudio(){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (actx){ if (actx.state === "suspended") actx.resume().catch(() => {}); return; }
+    try {
+      actx = new AC();
+      ambGain = actx.createGain(); ambGain.gain.value = 0; ambGain.connect(actx.destination);
+      voiceGain = actx.createGain(); voiceGain.gain.value = +els.volume.value; voiceGain.connect(actx.destination);
+      const lp = actx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 650; lp.connect(ambGain);
+      [[98, .45], [98.35, .38], [146.8, .2], [196.3, .08]].forEach(([f, g]) => {
+        const o = actx.createOscillator(); o.type = "sine"; o.frequency.value = f;
+        const gg = actx.createGain(); gg.gain.value = g;
+        o.connect(gg); gg.connect(lp); o.start();
+      });
+      const len = actx.sampleRate * 8, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < len; i++){ const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
+      const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+      const nf = actx.createBiquadFilter(); nf.type = "lowpass"; nf.frequency.value = 420;
+      const ng = actx.createGain(); ng.gain.value = .35;
+      const lfo = actx.createOscillator(); lfo.frequency.value = .07;
+      const lfoG = actx.createGain(); lfoG.gain.value = .22;
+      lfo.connect(lfoG); lfoG.connect(ng.gain); lfo.start();
+      src.connect(nf); nf.connect(ng); ng.connect(ambGain); src.start();
+    } catch(e){ actx = null; }
+  }
+  function ambientTo(on){
+    if (!actx || !ambGain) return;
+    const target = (on && els.ambient.checked) ? +els.ambLevel.value * 0.12 : 0;
+    const t = actx.currentTime;
+    ambGain.gain.cancelScheduledValues(t);
+    ambGain.gain.setTargetAtTime(target, t, on ? 1.4 : 0.8);
+  }
+  function chime(){
+    if (!actx) return;
+    const t = actx.currentTime;
+    [528, 792].forEach((f, i) => {
+      const o = actx.createOscillator(); o.type = "sine"; o.frequency.value = f;
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.07 / (i + 1), t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 4.5);
+      o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + 4.6);
+    });
+  }
+
+  /* ---------- Keep the screen awake while playing (where allowed) ---------- */
+  async function requestWake(){
+    try { if (navigator.wakeLock && !wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch(e){ wakeLock = null; }
+  }
+  function releaseWake(){ try { if (wakeLock) wakeLock.release(); } catch(e){} wakeLock = null; }
+
+  /* ---------- Water canvas ---------- */
+  const ctx = els.canvas.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  let W = 0, H = 0, dpr = 1, energy = 0.3;
+  function resize(){
+    const r = els.canvas.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = r.width; H = r.height;
+    els.canvas.width = Math.round(W * dpr); els.canvas.height = Math.round(H * dpr);
+  }
+  new ResizeObserver(resize).observe(els.canvas);
+  function draw(now){
+    const t = reduce.matches ? 0 : now / 1000;
+    const targetEnergy = state === "speaking" ? 1 : state === "resting" ? 0.55 : 0.25;
+    energy += (targetEnergy - energy) * 0.02;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const cx = W * 0.72, cy = H * 0.3;
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H));
+    bg.addColorStop(0, "#14303a"); bg.addColorStop(0.55, "#0c1b21"); bg.addColorStop(1, "#081115");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    const maxR = Math.hypot(W, H) * 0.75;
+    const rings = 7;
+    for (let k = 0; k < rings; k++){
+      const phase = ((t * (0.018 + energy * 0.02)) + k / rings) % 1;
+      const r = 40 + phase * maxR;
+      const a = (1 - phase) * (0.10 + energy * 0.16);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r * 0.92, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(233,201,143,${a.toFixed(3)})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    const breath = 1 + Math.sin(t * (Math.PI * 2 / 8)) * 0.07;
+    const orbR = (34 + energy * 10) * breath;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbR * 3.2);
+    g.addColorStop(0, `rgba(245,222,176,${0.55 + energy * 0.3})`);
+    g.addColorStop(0.3, `rgba(233,201,143,${0.18 + energy * 0.12})`);
+    g.addColorStop(1, "rgba(233,201,143,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, orbR * 3.2, 0, Math.PI * 2); ctx.fill();
+
+    if (state === "resting"){
+      const frac = Math.max(0, Math.min(1, (restEnds - now) / restTotal));
+      ctx.beginPath();
+      ctx.arc(cx, cy, orbR * 1.9, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.strokeStyle = "rgba(233,201,143,.75)";
+      ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.stroke();
+    }
+    // a soft veil so the words stay readable on the left
+    const veil = ctx.createLinearGradient(0, 0, W, 0);
+    veil.addColorStop(0, "rgba(8,17,21,.72)"); veil.addColorStop(0.6, "rgba(8,17,21,.15)"); veil.addColorStop(1, "rgba(8,17,21,0)");
+    ctx.fillStyle = veil; ctx.fillRect(0, 0, W, H);
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  /* ---------- Wiring ---------- */
+  function syncOutputs(){
+    $("rateOut").textContent = (+els.rate.value).toFixed(2) + "×";
+    $("pitchOut").textContent = (+els.pitch.value).toFixed(2);
+    $("pauseOut").textContent = els.pause.value + " s";
+    $("pauseQuick").textContent = els.pause.value + " s";
+    $("volumeOut").textContent = Math.round(els.volume.value * 100) + "%";
+    $("ambLevelOut").textContent = Math.round(els.ambLevel.value * 100) + "%";
+  }
+  let parseTimer = null;
+  els.text.addEventListener("input", () => {
+    if (state !== "idle") stopAll();
+    idx = 0;
+    clearTimeout(parseTimer);
+    parseTimer = setTimeout(parse, 150);
+  });
+  function nudgePause(d){
+    els.pause.value = Math.max(0, Math.min(30, +els.pause.value + d));
+    syncOutputs(); updateStats(); updateClock();
+  }
+  $("pauseLess").addEventListener("click", () => nudgePause(-1));
+  $("pauseMore").addEventListener("click", () => nudgePause(1));
+  els.example.addEventListener("click", () => { stopAll(); els.text.value = EXAMPLE; idx = 0; parse(); });
+  els.clear.addEventListener("click", () => { stopAll(); els.text.value = ""; idx = 0; parse(); els.text.focus(); });
+  els.play.addEventListener("click", toggle);
+  els.prev.addEventListener("click", () => jump(idx - 1));
+  els.next.addEventListener("click", () => jump(idx + 1));
+  els.restart.addEventListener("click", () => { const playing = isPlaying(state); stopAll(); idx = 0; if (playing) speakSentence(0); else updateStage(); });
+  els.preview.addEventListener("click", () => {
+    if (isStudio()){
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch(e){}
+      ensureAudio();
+      if (isPlaying(state)) pausePlayback();
+      halt();
+      const line = "Breathe in slowly. And let it go.";
+      const label = els.preview.textContent;
+      els.preview.disabled = true; els.preview.textContent = "Preparing…";
+      kRequest({ text: line, chunks: [line] }).then(res => {
+        if (!actx || !voiceGain) throw new Error("this browser can’t play generated audio");
+        stopSource();
+        previewSrc = makeSource(res);
+        previewSrc.start();
+      }).catch(err => { showMsg("The studio voice couldn’t play (" + err.message + ")."); })
+        .finally(() => { els.preview.disabled = false; els.preview.textContent = label; });
+      return;
+    }
+    if (!supported) return;
+    if (isPlaying(state)) pausePlayback();
+    halt();
+    liveUtterance = makeUtterance("Breathe in slowly. And let it go.");
+    let started = false;
+    liveUtterance.onstart = () => { started = true; };
+    try { synth.resume(); } catch(e){}
+    synth.speak(liveUtterance);
+    setTimeout(() => { if (!started){ synth.cancel(); noSpeech(); } }, 4000);
+  });
+  els.voice.addEventListener("change", () => { if (isPlaying(state)) pausePlayback(); showMsg(""); updateVoiceNote(); markReady(); schedulePrep(true); });
+  els.privateOnly.addEventListener("change", () => { if (isPlaying(state)) pausePlayback(); loadVoices(); });
+  ["rate", "pitch", "pause", "volume", "ambLevel"].forEach(k => els[k].addEventListener("input", () => { syncOutputs(); updateStats(); updateClock(); if (k === "ambLevel") ambientTo(isPlaying(state)); if (k === "volume" && voiceGain) voiceGain.gain.value = +els.volume.value; if (k === "rate"){ markReady(); schedulePrep(); } }));
+  els.ambient.addEventListener("change", () => { ensureAudio(); ambientTo(isPlaying(state)); });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("textarea, input, select, button")) return;
+    if (e.code === "Space"){ e.preventDefault(); toggle(); }
+    else if (e.key === "ArrowRight") jump(idx + 1);
+    else if (e.key === "ArrowLeft") jump(idx - 1);
+  });
+  setInterval(() => { if (isPlaying(state)){ updateClock(); updateChip(); } }, 250);
+
+  if (supported){
+    synth.onvoiceschanged = loadVoices;
+    loadVoices();
+    setTimeout(loadVoices, 600);
+    window.addEventListener("pagehide", () => synth.cancel());
+  } else {
+    updateVoiceNote(0);
+    showMsg("This browser can’t read text aloud. Open the page in a current version of Chrome, Edge, Safari or Firefox.");
+  }
+  const UA = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1);
+  if ((/\bClaude\/\d/.test(UA) || /\bElectron\//.test(UA)) && !isIOS && !/Android/.test(UA)) els.appNote.hidden = false;
+  if (isIOS) $("phoneTip").hidden = false;
+  els.text.value = EXAMPLE;
+  document.querySelectorAll("a[data-self]").forEach(a => { a.href = location.href.split("#")[0]; });
+  syncOutputs();
+  parse();
+  setTimeout(autoStart, 700);
+})();
+</script>
+</body>
+</html>
