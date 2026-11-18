@@ -223,7 +223,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
       </div>
       <label class="check" for="privateOnly"><input type="checkbox" id="privateOnly" checked> Only device voices that stay on this device</label>
       <p id="voiceNote" class="note"></p>
-      <p id="voiceTip" class="note tipbox" hidden><strong>For instant playback on your phone,</strong> install a high-quality voice. iPhone: Settings › Accessibility › Spoken Content › Voices › English, choose a male voice and download its Enhanced or Premium version. Android: Settings › Accessibility › Text-to-speech output, then install voice data for your engine. Reload this page and pick it under Device voices. These voices run on your phone and start instantly; Studio voices sound richer but take time to prepare on a phone.</p>
+      <p id="voiceTip" class="note tipbox" hidden><strong>For instant playback on your phone,</strong> install a high-quality voice. iPhone: Settings › Accessibility › Spoken Content › Voices › English, choose a male voice and download its Enhanced or Premium version. Android: Settings › Accessibility › Text-to-speech output, then install voice data for your engine. Reload this page and pick it under Device voices. These voices run on your phone and start instantly; Norman also starts quickly on phones; the studio voices sound richer but take longer to prepare.</p>
       <div class="sliders">
         <div class="field">
           <label for="rate">Pace <output id="rateOut" for="rate"></output></label>
@@ -253,12 +253,12 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
       <ul>
         <li><strong>Nothing is saved</strong>Your text lives only in this open tab. The page has no account, no server and no storage. Refresh or close it and the meditation is gone. Only the voice model itself is kept in your browser’s cache.</li>
         <li><strong>Nothing is sent</strong>The page makes no network requests with your words. The studio voice engine can only load this page’s own files and refuses requests to any other site.</li>
-        <li><strong>Voices run on your device</strong>Studio voices are an AI model running inside this tab. Device voices marked online send text to Google or Microsoft, so they stay hidden unless you untick the box above.</li>
+        <li><strong>Voices run on your device</strong>Norman and the studio voices are AI models running inside this tab. Device voices marked online send text to Google or Microsoft, so they stay hidden unless you untick the box above.</li>
         <li><strong>Spellcheck is off</strong>The text box turns off browser spellcheck, which on some setups sends what you type to a cloud service.</li>
       </ul>
     </section>
   </main>
-  <footer class="credits">Studio voices: Kokoro-82M by hexgrad (Apache-2.0), run with kokoro-js 1.2.1 and ONNX Runtime Web from Transformers.js 3.5.1. All files are hosted with this page, and nothing is loaded from anywhere else.</footer>
+  <footer class="credits">Voices: Norman (Piper, trained on public-domain LibriVox recordings) and Kokoro-82M by hexgrad (Apache-2.0), run with Piper's phonemizer, kokoro-js 1.2.1 and ONNX Runtime Web. All files are hosted with this page, and nothing is loaded from anywhere else.</footer>
 </div>
 
 <script>
@@ -449,8 +449,11 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     voices = all.filter(v => !privateOnly || v.localService).sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
     const prev = els.voice.value;
     els.voice.innerHTML = "";
-    const studio = document.createElement("optgroup"); studio.label = "Studio voices · AI on this device";
+    const fast = document.createElement("optgroup"); fast.label = "Fast voice · AI on this device, best for phones";
+    const studio = document.createElement("optgroup"); studio.label = "Studio voices · richest sound, slower on phones";
     if (studioSupported){
+      const n = document.createElement("option"); n.value = "piper:norman"; n.textContent = "Norman · calm, American"; fast.append(n);
+      els.voice.append(fast);
       STUDIO.forEach(([id, label]) => { const o = document.createElement("option"); o.value = "kokoro:" + id; o.textContent = label; studio.append(o); });
       els.voice.append(studio);
     }
@@ -468,7 +471,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     else {
       const quality = voices.find(v => /^en/i.test(v.lang) && /enhanced|premium/i.test(v.name) && score(v) >= 45);
       if (phoneLike && quality) els.voice.value = keyOf(quality);
-      else if (studioSupported) els.voice.value = "kokoro:" + STUDIO[0][0];
+      else if (studioSupported) els.voice.value = phoneLike ? "piper:norman" : "kokoro:" + STUDIO[0][0];
     }
     $("voiceTip").hidden = !(phoneLike && !voices.some(v => /^en/i.test(v.lang) && /enhanced|premium/i.test(v.name) && score(v) >= 45));
     updateVoiceNote(all.length);
@@ -480,10 +483,12 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     n.classList.remove("warn");
     if (isStudio()){
       if (studioError){ n.textContent = "The studio voice couldn’t start in this browser (" + studioError + "). Pick a device voice below the studio voices instead."; n.classList.add("warn"); }
-      else if (loadPct !== null) n.textContent = "Downloading the studio voice from this page: " + loadPct + "%. This happens once per browser.";
-      else if (studioReady) n.textContent = "Studio voice ready. It runs on this device, so your text never leaves it." +
+      else if (loadPct !== null) n.textContent = "Downloading the voice from this page: " + loadPct + "%. This happens once per browser.";
+      else if (studioReady) n.textContent = (engineOf(els.voice.value) === "piper" ? "Norman is ready." : "Studio voice ready.") + " It runs on this device, so your text never leaves it." +
         (genMeasured ? " Here, 1 second of speech takes about " + genRatio.toFixed(1) + " seconds to prepare (" + (window.crossOriginIsolated ? "multi-core" : "single-core") + ")." : "");
-      else n.textContent = "Studio voices run a small AI voice model inside this page. The first play downloads it from this page (about 115 MB) and your browser usually keeps it for next time. Your text never leaves this device.";
+      else n.textContent = engineOf(els.voice.value) === "piper"
+        ? "Norman is a small, fast AI voice that runs inside this page, so it keeps up even on phones. The first play downloads it from this page (about 100 MB, once per browser). Your text never leaves this device."
+        : "Studio voices run a larger AI voice model inside this page. They sound richest but prepare slowly on phones. The first play downloads it from this page (about 115 MB) and your browser usually keeps it for next time. Your text never leaves this device.";
       return;
     }
     if (!supported){ n.textContent = "This browser can’t speak text aloud. Try a current version of Chrome, Edge, Safari or Firefox."; n.classList.add("warn"); return; }
@@ -522,12 +527,28 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
   let worker = null, studioReady = false, studioError = "", loadPct = null, reqId = 0, preparing = false;
   const pending = new Map(), kCache = new Map();
   let currentSrc = null, previewSrc = null, voiceGain = null;
-  function isStudio(){ return els.voice.value.startsWith("kokoro:"); }
+  function engineOf(v){ return v.startsWith("kokoro:") ? "kokoro" : v.startsWith("piper:") ? "piper" : null; }
+  function isStudio(){ return engineOf(els.voice.value) !== null; }
+  let workerEngine = null;
+  // One voice engine runs at a time; switching engines frees the other one's memory.
+  function retireWorker(){
+    if (!worker) return;
+    const old = worker; worker = null; workerEngine = null;
+    try { old.terminate(); } catch(e){}
+    pending.forEach(p => p.reject(new Error("dropped"))); pending.clear();
+    studioReady = false; loadPct = null; studioError = "";
+    speedLog.length = 0; genMeasured = false;
+  }
   function getWorker(){
-    if (worker) return worker;
+    const engine = engineOf(els.voice.value);
+    if (worker && workerEngine === engine) return worker;
+    retireWorker();
     studioError = "";
-    worker = new Worker("./tts-worker.js", { type: "module" });
-    worker.onmessage = (e) => {
+    genRatio = engine === "piper" ? (phoneLike ? 1 : 0.4) : (phoneLike ? 4 : 1.6);
+    const me = engine === "piper" ? new Worker("./piper-worker.js") : new Worker("./tts-worker.js", { type: "module" });
+    worker = me; workerEngine = engine;
+    me.onmessage = (e) => {
+      if (me !== worker) return;
       const m = e.data || {};
       if (m.type === "progress"){ loadPct = Math.min(99, Math.round(m.loaded / m.total * 100)); updateChip(); updateVoiceNote(); }
       else if (m.type === "ready"){ studioReady = true; loadPct = null; updateChip(); updateVoiceNote(); }
@@ -547,9 +568,9 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
         else { const p = pending.get(m.id); if (p){ pending.delete(m.id); p.reject(new Error(m.message)); } }
       }
     };
-    worker.onerror = (e) => { e.preventDefault && e.preventDefault(); studioFailed(e.message || "the voice engine didn’t start"); };
-    worker.postMessage({ type: "load" });
-    return worker;
+    me.onerror = (e) => { e.preventDefault && e.preventDefault(); if (me === worker) studioFailed(e.message || "the voice engine didn’t start"); };
+    me.postMessage({ type: "load" });
+    return me;
   }
   function studioFailed(msg){
     studioError = msg; studioReady = false; loadPct = null;
@@ -559,13 +580,15 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     updateVoiceNote(); updateChip();
   }
   function studioParams(){
-    return { voice: els.voice.value.slice(7), speed: Math.max(0.6, Math.min(1.2, +els.rate.value * 1.1)) };
+    const v = els.voice.value, engine = engineOf(v);
+    const speed = engine === "piper" ? Math.max(0.55, Math.min(1.2, +els.rate.value * 1.05)) : Math.max(0.6, Math.min(1.2, +els.rate.value * 1.1));
+    return { engine, voice: v.slice(v.indexOf(":") + 1), speed };
   }
   function depthRate(){ return Math.min(1, 0.7 + 0.3 * +els.pitch.value); }
   function kRequest(s){
     if (!s) return null;
     const { voice, speed } = studioParams();
-    const key = voice + "|" + speed.toFixed(2) + "|" + s.text;
+    const key = keyFor(s);
     if (kCache.has(key)) return kCache.get(key);
     const id = ++reqId;
     const p = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
@@ -614,7 +637,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
       else { halt(); setState("paused"); }
     });
   }
-  function keyFor(s){ const { voice, speed } = studioParams(); return voice + "|" + speed.toFixed(2) + "|" + s.text; }
+  function keyFor(s){ const { engine, voice, speed } = studioParams(); return engine + ":" + voice + "|" + speed.toFixed(2) + "|" + s.text; }
   // Tint the sentences whose audio is already prepared.
   function markReady(){
     const studio = isStudio();
@@ -641,7 +664,13 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     const phone = /iPhone|iPad|iPod|Android/.test(UAx) || (/Macintosh/.test(UAx) && navigator.maxTouchPoints > 1);
     const go = () => { if (!worker && isStudio()){ getWorker(); schedulePrep(true); } };
     if (!phone){ go(); return; }
-    // On phones, start early only if the voice is already stored in this browser.
+    if (engineOf(els.voice.value) === "piper"){
+      // The fast voice is light enough to start as soon as you touch the page.
+      const once = () => { document.removeEventListener("pointerdown", once); document.removeEventListener("keydown", once); go(); };
+      document.addEventListener("pointerdown", once); document.addEventListener("keydown", once);
+      return;
+    }
+    // On phones, start the studio voice early only if it is already stored in this browser.
     try {
       caches.open("transformers-cache")
         .then(c => c.match("https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx"))
@@ -739,7 +768,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     if (worker) worker.postMessage({ type: "drop", keep });
   }
   function useDeviceVoiceInstead(err){
-    const opt = [...els.voice.options].find(o => !o.value.startsWith("kokoro:"));
+    const opt = [...els.voice.options].find(o => !engineOf(o.value));
     if (!opt){ showMsg("The studio voice couldn’t play (" + err.message + ")."); return false; }
     els.voice.value = opt.value;
     updateVoiceNote();
@@ -1065,7 +1094,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     synth.speak(liveUtterance);
     setTimeout(() => { if (!started){ synth.cancel(); noSpeech(); } }, 4000);
   });
-  els.voice.addEventListener("change", () => { if (isPlaying(state)) pausePlayback(); showMsg(""); updateVoiceNote(); markReady(); schedulePrep(true); });
+  els.voice.addEventListener("change", () => { if (isPlaying(state) || state === "buffering"){ halt(); setState("paused"); pausedFrom = "speaking"; } effPause = null; showMsg(""); if (worker && workerEngine !== engineOf(els.voice.value)) retireWorker(); updateVoiceNote(); markReady(); schedulePrep(true); updatePauseNote(); });
   els.privateOnly.addEventListener("change", () => { if (isPlaying(state)) pausePlayback(); loadVoices(); });
   ["rate", "pitch", "pause", "volume", "ambLevel"].forEach(k => els[k].addEventListener("input", () => { syncOutputs(); updateStats(); updateClock(); if (k === "ambLevel") ambientTo(isPlaying(state)); if (k === "volume" && voiceGain) voiceGain.gain.value = +els.volume.value; if (k === "rate"){ markReady(); schedulePrep(); } if (k === "pause"){ effPause = null; updatePauseNote(); } }));
   $("exactBtn").addEventListener("click", () => {
