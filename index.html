@@ -135,6 +135,8 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
 .app-note{font-size:.95rem}
 .tip{margin:0;font-size:.88rem;color:var(--dim);max-width:52ch;text-shadow:0 1px 10px rgba(0,0,0,.8)}
 .tip[hidden]{display:none}
+.stagelink{justify-self:start;align-self:flex-start;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+.stagelink[hidden]{display:none}
 
 :focus-visible{outline:2px solid var(--moon);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){
@@ -160,6 +162,8 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
         </div>
         <p id="now" class="now" aria-live="polite"></p>
         <p id="upnext" class="upnext"></p>
+        <p id="pauseNote" class="tip" hidden></p>
+        <button id="exactBtn" class="link stagelink" type="button" hidden></button>
         <p id="msg" class="msg" role="status" hidden></p>
         <p id="phoneTip" class="tip" hidden>On iPhone, turn off Silent mode and turn the volume up, or the voice stays quiet. Keep the screen on while listening.</p>
         <p id="noSpeech" class="msg" role="alert" hidden>Your browser accepted the text but isn’t producing any sound. Pick a Studio voice instead, or, inside the Claude app, <a href="./" data-self target="_blank" rel="noopener">Open Stillwater in Safari, Chrome or Edge</a> and press play there.</p>
@@ -322,7 +326,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
 
   /* ---------- Time ---------- */
   function estSeconds(){
-    const rate = +els.rate.value, pause = +els.pause.value;
+    const rate = +els.rate.value, pause = (typeof currentPause === "function") ? currentPause() : +els.pause.value;
     let s = 0;
     sentences.forEach((x, i) => { s += x.words / (2.6 * rate) + 0.4; if (i < sentences.length - 1) s += pause; });
     return s;
@@ -365,7 +369,8 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     if (state === "buffering"){
       label = loadPct !== null ? "Loading voice · " + loadPct + "%"
         : !worker || !studioReady ? "Starting the voice…"
-        : "Preparing · " + readyCount() + " of " + sentences.length + " ready · starts in ~" + fmt(Math.max(1, bufferEta));
+        : !genMeasured ? "Preparing the first sentence…"
+        : "Preparing · " + readyCount() + " of " + sentences.length + " ready · " + (bufferEta < 3 ? "almost ready" : "starts in ~" + fmt(bufferEta > 90 ? Math.round(bufferEta / 10) * 10 : bufferEta));
     }
     else if (state === "speaking") label = preparing ? (loadPct !== null ? "Loading voice · " + loadPct + "%" : "Preparing voice…") : "Speaking";
     else if (state === "resting") label = "Resting · " + Math.max(1, Math.ceil((restEnds - performance.now()) / 1000)) + "s";
@@ -395,7 +400,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     } else {
       setNow(sentences[idx].text, instant);
       els.upnext.textContent = state === "buffering"
-        ? "Preparing the voice on this device first, so every pause is exactly " + els.pause.value + " seconds. It starts on its own."
+        ? "Preparing the voice on this device first. It starts on its own."
         : sentences[idx + 1] ? "Next: " + sentences[idx + 1].text : "Last sentence";
       els.count.textContent = `Sentence ${idx + 1} of ${n}`;
     }
@@ -476,7 +481,8 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     if (isStudio()){
       if (studioError){ n.textContent = "The studio voice couldn’t start in this browser (" + studioError + "). Pick a device voice below the studio voices instead."; n.classList.add("warn"); }
       else if (loadPct !== null) n.textContent = "Downloading the studio voice from this page: " + loadPct + "%. This happens once per browser.";
-      else if (studioReady) n.textContent = "Studio voice ready. It runs on this device, so your text never leaves it.";
+      else if (studioReady) n.textContent = "Studio voice ready. It runs on this device, so your text never leaves it." +
+        (genMeasured ? " Here, 1 second of speech takes about " + genRatio.toFixed(1) + " seconds to prepare (" + (window.crossOriginIsolated ? "multi-core" : "single-core") + ")." : "");
       else n.textContent = "Studio voices run a small AI voice model inside this page. The first play downloads it from this page (about 115 MB) and your browser usually keeps it for next time. Your text never leaves this device.";
       return;
     }
@@ -527,7 +533,13 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
       else if (m.type === "ready"){ studioReady = true; loadPct = null; updateChip(); updateVoiceNote(); }
       else if (m.type === "audio"){
         const sec = m.audio.length / m.rate;
-        if (m.ms && sec > 0.8){ const r = (m.ms / 1000) / sec; genRatio = genMeasured ? genRatio * 0.6 + r * 0.4 : r; genMeasured = true; }
+        if (m.ms && sec > 0.8){
+          speedLog.push([m.ms / 1000, sec]);
+          const use = (speedLog.length > 1 ? speedLog.slice(1) : speedLog).slice(-12);
+          genRatio = use.reduce((a, x) => a + x[0], 0) / use.reduce((a, x) => a + x[1], 0);
+          genMeasured = true;
+          updateVoiceNote();
+        }
         const p = pending.get(m.id); if (p){ pending.delete(m.id); p.resolve({ data: m.audio, rate: m.rate }); }
       }
       else if (m.type === "error"){
@@ -640,12 +652,50 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
   // How long this device takes to make one second of speech (learned as it goes).
   const phoneLike = /iPhone|iPad|iPod|Android/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   let genRatio = phoneLike ? 4 : 1.6, genMeasured = false;
+  const speedLog = [];
   let bufferTimer = null, bufferEta = 0;
+  // When a device can't keep up, pauses are stretched evenly instead of making you wait a long time first.
+  let effPause = null, exactPauses = false, shownEta = null, shownAt = 0;
+  const MAX_START_WAIT = 20;
+  function currentPause(){ return effPause !== null ? effPause : +els.pause.value; }
+  function planPause(i){
+    const base = +els.pause.value;
+    if (exactPauses || !genMeasured || waitNeeded(i, base) <= MAX_START_WAIT) return base;
+    let lo = base, hi = 120;
+    if (waitNeeded(i, hi) > MAX_START_WAIT) return hi;
+    for (let n = 0; n < 14; n++){ const mid = (lo + hi) / 2; if (waitNeeded(i, mid) <= MAX_START_WAIT) hi = mid; else lo = mid; }
+    return Math.ceil(hi);
+  }
+  // A countdown that only ticks down, unless the estimate rises a lot.
+  function smoothEta(raw){
+    const now = performance.now();
+    if (shownEta === null){ shownEta = raw; shownAt = now; return raw; }
+    const ticked = shownEta - (now - shownAt) / 1000;
+    let next = ticked;
+    if (raw < ticked) next = raw;
+    else if (raw > ticked + Math.max(15, ticked * 0.3)) next = raw;
+    shownEta = Math.max(0, next); shownAt = now;
+    return shownEta;
+  }
+  function updatePauseNote(){
+    const note = $("pauseNote"), btn = $("exactBtn");
+    const base = +els.pause.value;
+    if (!isStudio()){ note.hidden = btn.hidden = true; return; }
+    if (effPause !== null){
+      note.textContent = "This device needs a little longer to prepare each sentence, so pauses are about " + effPause + " seconds instead of " + base + ".";
+      btn.textContent = "Wait for exact " + base + "-second pauses";
+      note.hidden = btn.hidden = false;
+    } else if (exactPauses && state === "buffering"){
+      note.textContent = "Waiting so every pause is exactly " + base + " seconds.";
+      btn.textContent = "Start sooner with longer pauses";
+      note.hidden = btn.hidden = false;
+    } else { note.hidden = btn.hidden = true; }
+  }
   function rawSeconds(s){ const p = kCache.get(keyFor(s)); return p && p.done ? p.dur : s.words / (2.6 * studioParams().speed) + 0.4; }
   // Seconds to wait before starting at sentence `from` so playback never has to stop and wait.
-  function waitNeeded(from){
+  function waitNeeded(from, pauseOverride){
     let gen = 0, offset = 0, wait = 0;
-    const pause = +els.pause.value, slow = depthRate();
+    const pause = pauseOverride !== undefined ? pauseOverride : currentPause(), slow = depthRate();
     for (let k = from; k < sentences.length; k++){
       const s = sentences[k], p = kCache.get(keyFor(s)), raw = rawSeconds(s);
       if (!(p && p.done)) gen += genRatio * raw;
@@ -660,15 +710,21 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     const first = kRequest(sentences[i]);
     if (worker && !first.done) worker.postMessage({ type: "front", id: first.id });
     queueAhead(i + 1);
-    if (waitNeeded(i) <= 0.5){ speakSentence(i); return; }
+    const plan = planPause(i);
+    effPause = plan > +els.pause.value ? plan : null;
+    if (waitNeeded(i) <= 0.5){ updatePauseNote(); speakSentence(i); return; }
+    shownEta = null;
     setState("buffering");
     updateStage(true);
     clearInterval(bufferTimer);
     const check = () => {
       if (state !== "buffering"){ clearInterval(bufferTimer); return; }
-      bufferEta = waitNeeded(idx);
-      updateChip();
-      if (bufferEta <= 0.5){ clearInterval(bufferTimer); speakSentence(idx); }
+      const p = planPause(idx);
+      effPause = p > +els.pause.value ? p : null;
+      const raw = waitNeeded(idx);
+      bufferEta = smoothEta(raw);
+      updateChip(); updatePauseNote();
+      if (raw <= 0.5){ clearInterval(bufferTimer); speakSentence(idx); }
     };
     bufferTimer = setInterval(check, 500);
     check();
@@ -775,10 +831,10 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
   }
   function afterSentence(my){
     if (idx >= sentences.length - 1){ finish(); return; }
-    rest(+els.pause.value * 1000, my);
+    rest(currentPause() * 1000, my);
   }
   function rest(ms, my){
-    restTotal = Math.max(1, +els.pause.value * 1000);
+    restTotal = Math.max(1, currentPause() * 1000);
     restEnds = performance.now() + ms;
     setState("resting");
     restTimer = setTimeout(() => { if (my === token) speakSentence(idx + 1); }, ms);
@@ -969,6 +1025,7 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     parseTimer = setTimeout(parse, 150);
   });
   function nudgePause(d){
+    effPause = null;
     els.pause.value = Math.max(0, Math.min(30, +els.pause.value + d));
     syncOutputs(); updateStats(); updateClock();
   }
@@ -1010,7 +1067,14 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
   });
   els.voice.addEventListener("change", () => { if (isPlaying(state)) pausePlayback(); showMsg(""); updateVoiceNote(); markReady(); schedulePrep(true); });
   els.privateOnly.addEventListener("change", () => { if (isPlaying(state)) pausePlayback(); loadVoices(); });
-  ["rate", "pitch", "pause", "volume", "ambLevel"].forEach(k => els[k].addEventListener("input", () => { syncOutputs(); updateStats(); updateClock(); if (k === "ambLevel") ambientTo(isPlaying(state)); if (k === "volume" && voiceGain) voiceGain.gain.value = +els.volume.value; if (k === "rate"){ markReady(); schedulePrep(); } }));
+  ["rate", "pitch", "pause", "volume", "ambLevel"].forEach(k => els[k].addEventListener("input", () => { syncOutputs(); updateStats(); updateClock(); if (k === "ambLevel") ambientTo(isPlaying(state)); if (k === "volume" && voiceGain) voiceGain.gain.value = +els.volume.value; if (k === "rate"){ markReady(); schedulePrep(); } if (k === "pause"){ effPause = null; updatePauseNote(); } }));
+  $("exactBtn").addEventListener("click", () => {
+    exactPauses = effPause !== null;
+    if (exactPauses) effPause = null;
+    shownEta = null;
+    if (state === "buffering" || isPlaying(state)){ const i = idx; halt(); startStudio(i); }
+    updatePauseNote();
+  });
   els.ambient.addEventListener("change", () => { ensureAudio(); ambientTo(isPlaying(state)); });
   document.addEventListener("keydown", (e) => {
     if (e.target.closest && e.target.closest("textarea, input, select, button")) return;
