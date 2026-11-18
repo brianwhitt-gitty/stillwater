@@ -597,7 +597,14 @@ input[type="checkbox"]{accent-color:var(--moon);width:16px;height:16px}
     p.catch(() => kCache.delete(key));
     p.then((res) => { p.done = true; p.dur = res.data.length / res.rate; markReady(); }, () => {});
     kCache.set(key, p);
-    if (kCache.size > 60) kCache.delete(kCache.keys().next().value);
+    // Keep memory in check by forgetting audio for old text or other voices, never the current meditation's.
+    if (kCache.size > sentences.length + 40){
+      const live = new Set(sentences.map(keyFor));
+      for (const k of [...kCache.keys()]){
+        if (!live.has(k)) kCache.delete(k);
+        if (kCache.size <= sentences.length + 10) break;
+      }
+    }
     return p;
   }
   function makeSource(res){
